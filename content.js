@@ -1,9 +1,9 @@
 // content.js - Injected into every page
 
 let triggerIcon = null;
-let sidebarIframe = null;
+let popupIframe = null;
 let lastSelection = null;
-let isSidebarOpen = false;
+let isPopupOpen = false;
 let selectionObserver = null;
 
 // --- SETTINGS CACHE ---
@@ -91,7 +91,7 @@ function createTriggerIcon() {
     return icon;
 }
 
-function createSidebar() {
+function createPopup() {
     // First check if we're in a context where Chrome APIs are available
     if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.getURL) {
         console.error('Chrome extension APIs are not available in this context');
@@ -99,7 +99,7 @@ function createSidebar() {
     }
 
     const iframe = document.createElement('iframe');
-    iframe.id = 'contextual-sidebar-iframe';
+    iframe.id = 'contextual-popup-iframe';
     
     try {
         const sidebarUrl = chrome.runtime.getURL('sidebar.html');
@@ -125,26 +125,26 @@ function createSidebar() {
         document.body.appendChild(iframe);
         return iframe;
     } catch (error) {
-        console.error('Error creating sidebar:', error);
+        console.error('Error creating popup:', error);
         return null;
     }
 }
 
-function toggleSidebar(show) {
-    if (show === isSidebarOpen) return;
+function togglePopup(show) {
+    if (show === isPopupOpen) return;
     
-    if (!sidebarIframe) {
-        sidebarIframe = createSidebar();
+    if (!popupIframe) {
+        popupIframe = createPopup();
     }
 
     if (show) {
-        isSidebarOpen = true;
-        document.body.classList.add('contextual-sidebar-open');
+        isPopupOpen = true;
+        document.body.classList.add('contextual-popup-open');
         document.documentElement.style.overflow = 'hidden';
-        sidebarIframe.classList.remove('hidden');
+        popupIframe.classList.remove('hidden');
         
-        // Set focus to the sidebar for better keyboard navigation
-        sidebarIframe.focus();
+        // Set focus to the popup for better keyboard navigation
+        popupIframe.focus();
 
         // Send the message to the iframe
         const message = { 
@@ -155,40 +155,40 @@ function toggleSidebar(show) {
 
         const sendMessage = () => {
             try {
-                sidebarIframe.contentWindow.postMessage(message, '*');
+                popupIframe.contentWindow.postMessage(message, '*');
             } catch (error) {
-                console.error('Failed to send message to sidebar:', error);
+                console.error('Failed to send message to popup:', error);
                 // Retry after a short delay
                 setTimeout(sendMessage, 100);
             }
         };
 
-        if (sidebarIframe.isLoaded) {
+        if (popupIframe.isLoaded) {
             sendMessage();
         } else {
-            sidebarIframe.pendingMessage = message;
+            popupIframe.pendingMessage = message;
         }
         
         // Add escape key handler
         const handleEscape = (e) => {
             if (e.key === 'Escape') {
-                toggleSidebar(false);
+                togglePopup(false);
             }
         };
         document.addEventListener('keydown', handleEscape);
         
-        // Clean up event listener when sidebar is closed
-        sidebarIframe.escapeHandler = handleEscape;
+        // Clean up event listener when popup is closed
+        popupIframe.escapeHandler = handleEscape;
     } else {
-        isSidebarOpen = false;
-        document.body.classList.remove('contextual-sidebar-open');
+        isPopupOpen = false;
+        document.body.classList.remove('contextual-popup-open');
         document.documentElement.style.overflow = '';
         
-        if (sidebarIframe) {
-            sidebarIframe.classList.add('hidden');
-            if (sidebarIframe.escapeHandler) {
-                document.removeEventListener('keydown', sidebarIframe.escapeHandler);
-                delete sidebarIframe.escapeHandler;
+        if (popupIframe) {
+            popupIframe.classList.add('hidden');
+            if (popupIframe.escapeHandler) {
+                document.removeEventListener('keydown', popupIframe.escapeHandler);
+                delete popupIframe.escapeHandler;
             }
         }
     }
@@ -309,22 +309,22 @@ const handleSelectionChange = debounce(() => {
         lastSelection = selectedText;
         positionTriggerIcon(window.getSelection());
         
-        // Auto-show sidebar if preference is set (using cached setting)
+        // Auto-show popup if preference is set (using cached setting)
         if (settings.autoOpenSidebar) {
-            toggleSidebar(true);
+            togglePopup(true);
         }
     } else if (triggerIcon) {
         triggerIcon.style.display = 'none';
     }
-}, 100);
+}, 500);
 
 function handleClickOutside(event) {
-    if (!triggerIcon || !sidebarIframe) return;
+    if (!triggerIcon || !popupIframe) return;
     
     const isClickOnIcon = triggerIcon.contains(event.target);
-    const isClickInSidebar = sidebarIframe.contains(event.target);
+    const isClickInPopup = popupIframe.contains(event.target);
     
-    if (!isClickOnIcon && !isClickInSidebar) {
+    if (!isClickOnIcon && !isClickInPopup) {
         // Hide the trigger icon if clicking outside
         if (triggerIcon.style.display !== 'none') {
             triggerIcon.style.opacity = '0';
@@ -383,8 +383,8 @@ function setupEventListeners() {
 function handleMessage(event) {
     if (event.source !== window) return;
     
-    if (event.data.type === 'closeSidebar') {
-        toggleSidebar(false);
+    if (event.data.type === 'closePopup') {
+        togglePopup(false);
     }
 }
 
@@ -421,9 +421,9 @@ function cleanup() {
         triggerIcon = null;
     }
     
-    if (sidebarIframe && sidebarIframe.parentNode) {
-        document.body.removeChild(sidebarIframe);
-        sidebarIframe = null;
+    if (popupIframe && popupIframe.parentNode) {
+        document.body.removeChild(popupIframe);
+        popupIframe = null;
     }
     
     console.log('Contextual extension cleaned up');

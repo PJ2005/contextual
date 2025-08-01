@@ -1,21 +1,5 @@
 /* styles.css - For elements injected into the host page */
 
-/* Prevents horizontal scrollbar when sidebar is open */
-html {
-    overflow-x: hidden;
-}
-
-/* Smooth transition for the body when sidebar opens/closes */
-.contextual-extension-active {
-    position: relative;
-    transition: right 0.3s ease-in-out;
-    right: 0;
-}
-
-.contextual-sidebar-open {
-    right: 360px; /* Width of the sidebar */
-}
-
 /* The floating trigger icon */
 #contextual-trigger-icon {
     position: absolute;
@@ -34,27 +18,37 @@ html {
     cursor: pointer;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
     border: 2px solid white;
-    transition: transform 0.1s ease-out;
+    transition: transform 0.1s ease-out, opacity 0.2s ease-in-out;
 }
 
 #contextual-trigger-icon:hover {
     transform: scale(1.1);
 }
 
-/* The sidebar iframe container */
-#contextual-sidebar-iframe {
+/* The popup iframe container */
+#contextual-popup-iframe {
     position: fixed;
-    top: 0;
-    right: 0;
-    width: 360px;
-    height: 100%;
+    top: 20px; /* Position from the top */
+    right: 20px; /* Position from the right */
+    width: 400px;
+    height: 550px;
+    max-height: calc(100vh - 40px); /* Ensure it doesn't go off-screen */
     border: none;
     z-index: 99999998;
-    box-shadow: -5px 0px 20px rgba(0, 0, 0, 0.15);
-    transition: transform 0.3s ease-in-out;
-    transform: translateX(100%); /* Start off-screen */
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+    border-radius: 12px;
+    overflow: hidden; /* Ensures content respects the border-radius */
+    transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
+    transform-origin: top right;
+    /* Start hidden and slightly scaled down */
+    opacity: 0;
+    transform: scale(0.95);
+    pointer-events: none; /* Prevent interaction when hidden */
 }
 
-#contextual-sidebar-iframe:not(.hidden) {
-    transform: translateX(0);
+#contextual-popup-iframe:not(.hidden) {
+    /* Become visible and scale to full size */
+    opacity: 1;
+    transform: scale(1);
+    pointer-events: auto; /* Allow interaction when visible */
 }
