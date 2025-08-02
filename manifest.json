@@ -21,9 +21,15 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
-      "css": ["styles.css"]
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "styles.css"
+      ]
     }
   ],
   "action": {
@@ -41,8 +47,12 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["sidebar.html"],
-      "matches": ["<all_urls>"]
+      "resources": [
+        "explanation.html"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ]
 }

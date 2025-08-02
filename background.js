@@ -22,7 +22,7 @@ function getVisibleText() {
         {
             acceptNode: (node) => {
                 // Skip script, style, and other non-visible elements
-                if (node.parentNode.nodeName === 'SCRIPT' || 
+                if (node.parentNode.nodeName === 'SCRIPT' ||
                     node.parentNode.nodeName === 'STYLE' ||
                     node.parentNode.nodeName === 'NOSCRIPT' ||
                     node.parentNode.isContentEditable) {
@@ -40,7 +40,7 @@ function getVisibleText() {
     while (node = walker.nextNode()) {
         textParts.push(node.textContent.trim());
     }
-    
+
     return textParts.join(' ').replace(/\s+/g, ' ');
 }
 
@@ -73,6 +73,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true; // Indicates that the response is sent asynchronously
     }
 
+    if (request.type === 'setStorage') {
+        chrome.storage.sync.set({ [request.key]: request.value }, () => {
+            if (chrome.runtime.lastError) {
+                console.error('Error setting storage:', chrome.runtime.lastError);
+                sendResponse({ success: false, error: chrome.runtime.lastError.message });
+            } else {
+                sendResponse({ success: true });
+            }
+        });
+        return true;
+    }
+
     // This is the main entry point for any requests from the extension's UI.
     if (request.type === 'getExplanation') {
         (async () => {
@@ -86,7 +98,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 // Create a cache key based on the selected text and style
                 const cacheKey = `${request.payload.selectedText}-${request.payload.style}`;
                 const cached = explanationCache.get(cacheKey);
-                
+
                 // Return cached response if available and not expired
                 if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
                     return sendResponse({ status: 'success', data: cached.data, cached: true });
@@ -125,15 +137,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     timestamp: Date.now()
                 });
 
-                sendResponse({ 
-                    status: 'success', 
+                sendResponse({
+                    status: 'success',
                     data: explanation,
                     cached: false
                 });
 
             } catch (error) {
                 console.error('Contextual Extension Error:', error);
-                
+
                 // Provide more user-friendly error messages
                 let userMessage = error.message;
                 if (error.message.includes('API key')) {
@@ -143,9 +155,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 } else if (error.message.includes('network')) {
                     userMessage = 'Network error. Please check your internet connection.';
                 }
-                
-                sendResponse({ 
-                    status: 'error', 
+
+                sendResponse({
+                    status: 'error',
                     message: userMessage,
                     details: process.env.NODE_ENV === 'development' ? error.message : undefined
                 });
@@ -169,18 +181,18 @@ const rateLimit = {
  */
 async function processQueue() {
     if (rateLimit.processing || rateLimit.queue.length === 0) return;
-    
+
     rateLimit.processing = true;
     const now = Date.now();
     const timeSinceLastRequest = now - rateLimit.lastRequestTime;
     const delay = Math.max(0, rateLimit.minRequestInterval - timeSinceLastRequest);
-    
+
     if (delay > 0) {
         await new Promise(resolve => setTimeout(resolve, delay));
     }
-    
+
     const { resolve, reject, params } = rateLimit.queue.shift();
-    
+
     try {
         const result = await callGeminiAPIInternal(params);
         rateLimit.lastRequestTime = Date.now();
@@ -212,38 +224,33 @@ async function callGeminiAPIInternal({ apiKey, selectedText, fullText, style }) 
 
     // Improved prompt with better instructions for the AI
     const prompt = `
-        You are an expert explainer. Given the full text of an article for context, explain the following selected term or phrase.
-        The explanation should be tailored to how the term is used in the article.
-        
-        **Explanation Style:** ${style}
-        - If 'Simple', explain in plain language that a 10-year-old could understand.
-        - If 'Technical', include detailed information and relevant technical context.
-        
-        ---
-        **Full Article Context (truncated):**
-        ${truncatedFullText}
-        
-        ---
-        **Selected Text to Explain:**
-        "${selectedText}"
-        
-        ---
-        **Instructions:**
-        1. Provide a clear, concise explanation of the selected text.
-        2. Include 1-2 examples if helpful.
-        3. Keep the response focused and relevant to the context.
-        
-        **Explanation:**
+        You are an expert educator with a knack for making complex topics understandable and engaging.
+        A user has selected the text "${selectedText}".
+        Your task is to explain this concept.
+
+        Follow these rules based on the requested style:
+        - **If the style is "Simple":** Explain it like you're talking to a curious 10-year-old. Use a simple analogy or a real-world example. Keep it concise, friendly, and encouraging.
+        - **If the style is "Technical":** Provide a more detailed, technically accurate definition suitable for a university student or professional. Assume some prior knowledge but avoid overly obscure jargon.
+
+        **Formatting Rules:**
+        - Use Markdown for all formatting.
+        - Use **bold** for key terms.
+        - Use *italics* for emphasis.
+        - Use bullet points (e.g., '-') for lists.
+        - Use code blocks with the code ticks for any code examples.
+        - Structure the explanation with paragraphs and lists for readability.
+
+        Generate the explanation for the text "${selectedText}" in the "${style}" style.
     `;
 
     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-    
+
     try {
         const payload = {
-            contents: [{ 
-                parts: [{ 
-                    text: prompt 
-                }] 
+            contents: [{
+                parts: [{
+                    text: prompt
+                }]
             }],
             generationConfig: {
                 temperature: style === 'Technical' ? 0.3 : 0.5,
@@ -277,7 +284,7 @@ async function callGeminiAPIInternal({ apiKey, selectedText, fullText, style }) 
 
         const response = await fetch(apiUrl, {
             method: 'POST',
-            headers: { 
+            headers: {
                 'Content-Type': 'application/json',
                 'x-goog-api-client': 'contextual-extension/1.0.0'
             },
@@ -290,12 +297,12 @@ async function callGeminiAPIInternal({ apiKey, selectedText, fullText, style }) 
         if (!response.ok) {
             const errorBody = await response.json().catch(() => ({}));
             console.error("API Error Response:", errorBody);
-            
+
             let errorMessage = `API request failed with status ${response.status}`;
             if (errorBody.error) {
                 errorMessage += `: ${errorBody.error.message || JSON.stringify(errorBody.error)}`;
             }
-            
+
             const error = new Error(errorMessage);
             error.status = response.status;
             error.details = errorBody;
@@ -303,7 +310,7 @@ async function callGeminiAPIInternal({ apiKey, selectedText, fullText, style }) 
         }
 
         const result = await response.json();
-        
+
         if (result.candidates?.[0]?.content?.parts?.[0]?.text) {
             return result.candidates[0].content.parts[0].text.trim();
         } else if (result.promptFeedback?.blockReason) {
@@ -319,5 +326,5 @@ async function callGeminiAPIInternal({ apiKey, selectedText, fullText, style }) 
         console.error("API call failed:", error);
         throw error;
     }
-        throw new Error("Could not extract explanation from API response.");
-    }
+    throw new Error("Could not extract explanation from API response.");
+}

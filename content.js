@@ -17,7 +17,7 @@ let settings = {
 // Debounce helper to prevent rapid firing of events
 function debounce(func, wait) {
     let timeout;
-    return function(...args) {
+    return function (...args) {
         clearTimeout(timeout);
         timeout = setTimeout(() => func.apply(this, args), wait);
     };
@@ -30,15 +30,15 @@ function isInViewport(element) {
         if (!element || !(element instanceof Element) || !document.body.contains(element)) {
             return false;
         }
-        
+
         // Safely get the bounding rectangle
         const rect = element.getBoundingClientRect();
         if (!rect) return false;
-        
+
         // Get viewport dimensions safely
         const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
         const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
-        
+
         // Check if the element is within the viewport
         return (
             rect.top >= 0 &&
@@ -68,25 +68,25 @@ function createTriggerIcon() {
     icon.setAttribute('aria-label', 'Explain selected text');
     icon.setAttribute('role', 'button');
     icon.tabIndex = 0;
-    
+
     // Add keyboard support
     icon.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
-            toggleSidebar(true);
+            togglePopup(true);
             icon.style.display = 'none';
         } else if (e.key === 'Escape') {
             icon.style.display = 'none';
         }
     });
-    
+
     // Add click handler
     icon.addEventListener('click', (e) => {
         e.stopPropagation();
-        toggleSidebar(true);
+        togglePopup(true);
         icon.style.display = 'none';
     });
-    
+
     document.body.appendChild(icon);
     return icon;
 }
@@ -100,13 +100,13 @@ function createPopup() {
 
     const iframe = document.createElement('iframe');
     iframe.id = 'contextual-popup-iframe';
-    
+
     try {
-        const sidebarUrl = chrome.runtime.getURL('sidebar.html');
-        if (!sidebarUrl) {
-            throw new Error('Could not get sidebar URL');
+        const explanationUrl = chrome.runtime.getURL('explanation.html');
+        if (!explanationUrl) {
+            throw new Error('Could not get explanation URL');
         }
-        iframe.src = sidebarUrl;
+        iframe.src = explanationUrl;
         iframe.className = 'hidden';
 
         // **THE FIX IS HERE (Part 1):**
@@ -132,7 +132,7 @@ function createPopup() {
 
 function togglePopup(show) {
     if (show === isPopupOpen) return;
-    
+
     if (!popupIframe) {
         popupIframe = createPopup();
     }
@@ -140,15 +140,14 @@ function togglePopup(show) {
     if (show) {
         isPopupOpen = true;
         document.body.classList.add('contextual-popup-open');
-        document.documentElement.style.overflow = 'hidden';
         popupIframe.classList.remove('hidden');
-        
+
         // Set focus to the popup for better keyboard navigation
         popupIframe.focus();
 
         // Send the message to the iframe
-        const message = { 
-            type: 'fetchExplanation', 
+        const message = {
+            type: 'fetchExplanation',
             selectedText: lastSelection,
             timestamp: Date.now()
         };
@@ -168,7 +167,7 @@ function togglePopup(show) {
         } else {
             popupIframe.pendingMessage = message;
         }
-        
+
         // Add escape key handler
         const handleEscape = (e) => {
             if (e.key === 'Escape') {
@@ -176,14 +175,13 @@ function togglePopup(show) {
             }
         };
         document.addEventListener('keydown', handleEscape);
-        
+
         // Clean up event listener when popup is closed
         popupIframe.escapeHandler = handleEscape;
     } else {
         isPopupOpen = false;
         document.body.classList.remove('contextual-popup-open');
-        document.documentElement.style.overflow = '';
-        
+
         if (popupIframe) {
             popupIframe.classList.add('hidden');
             if (popupIframe.escapeHandler) {
@@ -204,27 +202,27 @@ function getSelectedText() {
 
 function positionTriggerIcon(selection) {
     if (!triggerIcon || !selection.rangeCount) return;
-    
+
     const range = selection.getRangeAt(0);
     const rect = range.getBoundingClientRect();
-    
+
     // Calculate position with boundary checks
     const iconWidth = 32; // icon width in pixels
     const iconHeight = 32; // icon height in pixels
     const padding = 8; // padding from selection
-    
+
     let left = window.scrollX + rect.right + padding;
     let top = window.scrollY + rect.top - (iconHeight - rect.height) / 2;
-    
+
     // Ensure icon stays within viewport
     const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
     const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
-    
+
     if (left + iconWidth > viewportWidth + window.scrollX) {
         // If icon would go off right edge, position to the left of selection
         left = window.scrollX + rect.left - iconWidth - padding;
     }
-    
+
     if (top < window.scrollY) {
         // If icon would go above viewport, align with top
         top = window.scrollY + padding;
@@ -232,19 +230,19 @@ function positionTriggerIcon(selection) {
         // If icon would go below viewport, align with bottom
         top = window.scrollY + viewportHeight - iconHeight - padding;
     }
-    
+
     triggerIcon.style.left = `${Math.max(window.scrollX + padding, left)}px`;
     triggerIcon.style.top = `${top}px`;
     triggerIcon.style.display = 'flex';
-    
+
     // Add a small animation
     triggerIcon.style.opacity = '0';
     triggerIcon.style.transform = 'translateY(10px)';
     triggerIcon.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
-    
+
     // Trigger reflow
     void triggerIcon.offsetWidth;
-    
+
     triggerIcon.style.opacity = '1';
     triggerIcon.style.transform = 'translateY(0)';
 }
@@ -304,15 +302,11 @@ const handleSelectionChange = debounce(() => {
     }
 
     const selectedText = getSelectedText();
-    
+
     if (selectedText.length > 0 && selectedText.length < 1000) {
         lastSelection = selectedText;
         positionTriggerIcon(window.getSelection());
-        
-        // Auto-show popup if preference is set (using cached setting)
-        if (settings.autoOpenSidebar) {
-            togglePopup(true);
-        }
+        // Only show the icon; popup will open on icon click
     } else if (triggerIcon) {
         triggerIcon.style.display = 'none';
     }
@@ -320,10 +314,10 @@ const handleSelectionChange = debounce(() => {
 
 function handleClickOutside(event) {
     if (!triggerIcon || !popupIframe) return;
-    
+
     const isClickOnIcon = triggerIcon.contains(event.target);
     const isClickInPopup = popupIframe.contains(event.target);
-    
+
     if (!isClickOnIcon && !isClickInPopup) {
         // Hide the trigger icon if clicking outside
         if (triggerIcon.style.display !== 'none') {
@@ -362,13 +356,13 @@ function setupEventListeners() {
     const boundHandleClickOutside = (e) => handleClickOutside(e);
     const boundHandleScroll = debounce(handleScroll, 100);
     const boundHandleResize = debounce(handleResize, 200);
-    
+
     // Add event listeners
     document.addEventListener('selectionchange', boundHandleSelectionChange);
     document.addEventListener('mousedown', boundHandleClickOutside);
     document.addEventListener('scroll', boundHandleScroll, { passive: true });
     window.addEventListener('resize', boundHandleResize);
-    
+
     // Store cleanup function
     return () => {
         document.removeEventListener('selectionchange', boundHandleSelectionChange);
@@ -381,10 +375,28 @@ function setupEventListeners() {
 // --- MESSAGE HANDLING ---
 
 function handleMessage(event) {
-    if (event.source !== window) return;
-    
-    if (event.data.type === 'closePopup') {
-        togglePopup(false);
+    // Check if message is coming from our popup iframe
+    if (popupIframe && event.source === popupIframe.contentWindow) {
+        const { type, dx, dy, height } = event.data;
+        if (type === 'closeSidebar') {
+            togglePopup(false);
+        } else if (type === 'dragPopup') {
+            const rect = popupIframe.getBoundingClientRect();
+            // Ensure the popup doesn't go off-screen
+            const newLeft = Math.max(0, Math.min(window.innerWidth - rect.width, rect.left + dx));
+            const newTop = Math.max(0, Math.min(window.innerHeight - rect.height, rect.top + dy));
+            popupIframe.style.left = `${newLeft}px`;
+            popupIframe.style.top = `${newTop}px`;
+            // If we are dragging, we are no longer in the default top-right position
+            popupIframe.style.right = 'auto';
+            popupIframe.style.transform = 'none';
+        } else if (type === 'resizePopup') {
+            const rect = popupIframe.getBoundingClientRect();
+            popupIframe.style.width = `${rect.width + dx}px`;
+            popupIframe.style.height = `${rect.height + dy}px`;
+        } else if (type === 'autoResizePopup') {
+            popupIframe.style.height = `${height}px`;
+        }
     }
 }
 
@@ -398,7 +410,7 @@ function handleExtensionMessage(message, sender, sendResponse) {
         sendResponse({ status: 'pong' });
         return true;
     }
-    
+
     // Add more message handlers as needed
     return false;
 }
@@ -409,23 +421,23 @@ function cleanup() {
         cleanupListeners();
         cleanupListeners = null;
     }
-    
+
     // Remove message listeners
     window.removeEventListener('message', handleMessage);
     chrome.runtime.onMessage.removeListener(handleExtensionMessage);
     window.removeEventListener('unload', cleanup);
-    
+
     // Clean up UI elements
     if (triggerIcon && triggerIcon.parentNode) {
         triggerIcon.parentNode.removeChild(triggerIcon);
         triggerIcon = null;
     }
-    
+
     if (popupIframe && popupIframe.parentNode) {
         document.body.removeChild(popupIframe);
         popupIframe = null;
     }
-    
+
     console.log('Contextual extension cleaned up');
 }
 
@@ -433,21 +445,21 @@ function initializeExtension() {
     try {
         // Create UI elements
         triggerIcon = createTriggerIcon();
-        
+
         // Set up event listeners and store cleanup function
         cleanupListeners = setupEventListeners();
-        
+
         // Listen for messages from the sidebar
         window.addEventListener('message', handleMessage);
-        
+
         // Listen for extension messages
         chrome.runtime.onMessage.addListener(handleExtensionMessage);
-        
+
         // Add cleanup handlers for different page lifecycle events
         // Use pagehide for modern browsers and beforeunload as fallback
         window.addEventListener('pagehide', cleanup);
         window.addEventListener('beforeunload', cleanup);
-        
+
         // Fetch and cache settings on initialization
         getStorageItem('autoOpenSidebar', (value) => {
             if (value !== null) {
@@ -485,40 +497,55 @@ function initializeExtension() {
                 height: 18px;
             }
             
-            #contextual-sidebar-iframe {
+            #contextual-popup-iframe {
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                left: auto;
+                transform: none;
+                width: 420px;
+                min-width: 300px;
+                max-width: 90vw;
+                height: auto; /* Allow height to be set by content */
+                min-height: 200px;
+                max-height: 90vh;
+                border: none;
+                z-index: 2147483647;
+                border-radius: 12px;
+                box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+                background: white;
+                transition: opacity 0.3s ease, transform 0.3s ease;
+            }
+            
+            #contextual-popup-iframe.hidden {
+                opacity: 0;
+                transform: scale(0.95);
+                pointer-events: none;
+            }
+            
+            .contextual-popup-open {
+                overflow: hidden;
+            }
+            
+            .contextual-popup-open::before {
+                content: '';
                 position: fixed;
                 top: 0;
-                right: 0;
-                width: 400px;
+                left: 0;
+                width: 100%;
                 height: 100%;
-                border: none;
+                background: rgba(0, 0, 0, 0.5);
                 z-index: 2147483646;
-                box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
-                transition: transform 0.3s ease-in-out;
-                background: white;
+                backdrop-filter: blur(2px);
+                /* Add a class to prevent interaction while dragging */
             }
-            
-            #contextual-sidebar-iframe.hidden {
-                transform: translateX(100%);
-            }
-            
-            .contextual-sidebar-open {
-                margin-right: 400px;
-                transition: margin-right 0.3s ease-in-out;
-            }
-            
-            @media (max-width: 768px) {
-                #contextual-sidebar-iframe {
-                    width: 100%;
-                }
-                
-                .contextual-sidebar-open {
-                    margin-right: 0;
-                }
+
+            .contextual-popup-dragging::before {
+                cursor: move;
             }
         `;
         document.head.appendChild(style);
-        
+
         console.log('Contextual extension initialized');
     } catch (error) {
         console.error('Failed to initialize extension:', error);
