@@ -1,6 +1,6 @@
 # Contextual - AI-Powered Explanations
 
-Tired of switching tabs to look up complex terms while reading online? **Contextual** is a Chrome extension that brings instant, AI-powered explanations directly to your workflow. Highlight any word or phrase on a webpage, and get a context-aware explanation from Google's Gemini without ever leaving the page.
+Tired of switching tabs to look up complex terms while reading online? **Contextual** is a Chrome extension that brings instant, AI-powered explanations directly to your workflow. Highlight any word or phrase on a webpage, and get a context-aware explanation from OpenRouter's AI models without ever leaving the page.
 
 ## The Idea
 
@@ -12,7 +12,7 @@ Imagine you're reading a technical article and encounter a complex concept. Inst
 *   **Context-Aware:** The extension analyzes the entire page to provide explanations that are relevant to the article you're reading.
 *   **Customizable Styles:** Choose between a **Simple** explanation for a quick overview or a **Technical** one for a more in-depth understanding.
 *   **Seamless Workflow:** A discreet icon appears next to your selection, opening a non-intrusive sidebar that doesn't disrupt your reading.
-*   **Powered by Gemini:** Leverages the power of Google's Gemini for high-quality, intelligent responses.
+*   **Powered by OpenRouter:** Leverages the power of OpenRouter's AI models for high-quality, intelligent responses.
 *   **Privacy First:** Your API key is stored securely and locally on your browser.
 
 ## How to Use
@@ -28,11 +28,12 @@ Since this is a local development version, you can load it into Chrome as follow
 
 ### 2. Setup
 
-Before you can use the extension, you need to add your own Google Gemini API key:
+Before you can use the extension, you need to add your own OpenRouter API key and model name:
 
 1.  Click the Contextual extension icon in your Chrome toolbar (it looks like a stylized 'C').
-2.  A popup will appear. Paste your Gemini API key into the input field. (You can get a free key from [Google AI Studio](https://aistudio.google.com/app/apikey)).
-3.  Click **"Save"**.
+2.  A popup will appear. Paste your OpenRouter API key into the input field. (You can get a free key from [OpenRouter](https://openrouter.ai/)).
+3.  Enter the model name you want to use (e.g., `deepseek/deepseek-chat-v3-0324`). You can find available models at [OpenRouter Models](https://openrouter.ai/models).
+4.  Click **"Save"**.
 
 ### 3. Getting Explanations
 
@@ -45,7 +46,7 @@ Before you can use the extension, you need to add your own Google Gemini API key
 
 *   **Content Script (`content.js`):** Detects text selections on the page and injects the trigger icon.
 *   **Sidebar (`sidebar.js`):** An iframe that displays the UI for the explanation, allowing you to switch styles.
-*   **Background Service Worker (`background.js`):** Acts as the brain. It receives the selected text from the sidebar, scrapes the full page content for context, and makes the secure API call to the Gemini API. It also includes a simple caching layer to prevent redundant API calls.
+*   **Background Service Worker (`background.js`):** Acts as the brain. It receives the selected text from the sidebar, scrapes the full page content for context, and makes the secure API call to the OpenRouter API (using your chosen model). It also includes a simple caching layer to prevent redundant API calls.
 
 ## License
 

@@ -16,42 +16,134 @@ setInterval(() => {
 
 // Helper function to extract visible text from the page
 function getVisibleText() {
-    const walker = document.createTreeWalker(
-        document.body,
-        NodeFilter.SHOW_TEXT,
-        {
-            acceptNode: (node) => {
-                // Skip script, style, and other non-visible elements
-                if (node.parentNode.nodeName === 'SCRIPT' ||
-                    node.parentNode.nodeName === 'STYLE' ||
-                    node.parentNode.nodeName === 'NOSCRIPT' ||
-                    node.parentNode.isContentEditable) {
-                    return NodeFilter.FILTER_REJECT;
-                }
-                // Only include nodes with actual text
-                return node.textContent.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+    try {
+        // Get main content containers first to avoid extracting navigation, ads, etc.
+        const contentSelectors = [
+            'main', 'article', '[role="main"]', '.content', '.post-content',
+            '.entry-content', '.article-body', '.story-body', '#content',
+            '.markdown-body', '.prose'
+        ];
+
+        let contentContainer = null;
+        for (const selector of contentSelectors) {
+            try {
+                contentContainer = document.querySelector(selector);
+                if (contentContainer) break;
+            } catch (e) {
+                // Continue to next selector if this one fails
+                continue;
             }
-        },
-        false
-    );
+        }
 
-    const textParts = [];
-    let node;
-    while (node = walker.nextNode()) {
-        textParts.push(node.textContent.trim());
+        // Fallback to body if no content container found
+        const targetElement = contentContainer || document.body;
+
+        if (!targetElement) {
+            return 'No content available on this page.';
+        }
+
+        const walker = document.createTreeWalker(
+            targetElement,
+            NodeFilter.SHOW_TEXT,
+            {
+                acceptNode: (node) => {
+                    try {
+                        const parent = node.parentNode;
+                        if (!parent) return NodeFilter.FILTER_REJECT;
+
+                        // Reject specific unwanted elements
+                        if (parent.nodeName === 'SCRIPT' ||
+                            parent.nodeName === 'STYLE' ||
+                            parent.nodeName === 'NOSCRIPT' ||
+                            parent.nodeName === 'NAV' ||
+                            parent.closest?.('nav') ||
+                            parent.closest?.('header') ||
+                            parent.closest?.('footer') ||
+                            parent.closest?.('[role="navigation"]') ||
+                            parent.closest?.('.sidebar') ||
+                            parent.closest?.('.menu') ||
+                            parent.closest?.('.ads') ||
+                            parent.closest?.('.advertisement') ||
+                            parent.isContentEditable) {
+                            return NodeFilter.FILTER_REJECT;
+                        }
+
+                        // Only accept text nodes with meaningful content
+                        const text = node.textContent?.trim() || '';
+                        return (text && text.length > 2) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+                    } catch (e) {
+                        // If there's any error, reject this node
+                        return NodeFilter.FILTER_REJECT;
+                    }
+                }
+            },
+            false
+        );
+
+        const textParts = [];
+        let node;
+        let totalLength = 0;
+        const maxLength = 2000; // Drastically reduced from 8000 to 2000
+
+        try {
+            while ((node = walker.nextNode()) && totalLength < maxLength) {
+                const text = node.textContent?.trim() || '';
+                if (text) {
+                    textParts.push(text);
+                    totalLength += text.length;
+                }
+            }
+        } catch (e) {
+            // If walker fails, try to get basic text content
+            console.warn('TreeWalker failed, falling back to basic text extraction:', e);
+            const fallbackText = targetElement.textContent?.trim() || '';
+            return fallbackText.substring(0, maxLength);
+        }
+
+        const result = textParts.join(' ').replace(/\s+/g, ' ').substring(0, maxLength);
+        return result || 'No readable text found on this page.';
+    } catch (error) {
+        console.error('Error extracting text from page:', error);
+        // Final fallback - try to get any text from document.body
+        try {
+            const fallbackText = document.body?.textContent?.trim() || '';
+            return fallbackText.substring(0, 2000) || 'Unable to extract text from this page.'; // Reduced from 8000 to 2000
+        } catch (e) {
+            return 'Unable to extract text from this page.';
+        }
     }
-
-    return textParts.join(' ').replace(/\s+/g, ' ');
 }
 
-// Retry logic for API calls
-async function withRetry(fn, maxRetries = 3, baseDelay = 1000) {
+// Retry logic for API calls with enhanced validation
+async function withRetry(fn, maxRetries = 3, baseDelay = 1000, originalParams = null) {
     let lastError;
+    let contextReductionFactor = 1; // Start with full context
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-            return await fn();
+            // Adjust context length for retries
+            const modifiedFn = async () => {
+                const result = await fn();
+                if (attempt > 1 && typeof result === 'string') {
+                    if (result.length < 50) {
+                        throw new Error("Response too short");
+                    }
+                    if (result.includes("...") && !result.endsWith("...")) {
+                        throw new Error("Response contains mid-sentence ellipsis");
+                    }
+                }
+                return result;
+            };
+            return await modifiedFn();
         } catch (error) {
             lastError = error;
+            if (error.message.includes('Token limit exceeded') && originalParams && originalParams.fullText) {
+                contextReductionFactor *= 0.2; // Even more aggressive reduction from 0.3 to 0.2
+                const reducedFullText = originalParams.fullText.substring(0, Math.floor(500 * contextReductionFactor)); // Reduced base from 2000 to 500
+                fn = () => callGeminiAPIInternal({
+                    ...originalParams,
+                    fullText: reducedFullText
+                });
+            }
             if (attempt === maxRetries) break;
             const delay = baseDelay * Math.pow(2, attempt - 1);
             await new Promise(resolve => setTimeout(resolve, delay));
@@ -60,113 +152,39 @@ async function withRetry(fn, maxRetries = 3, baseDelay = 1000) {
     throw lastError;
 }
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.type === 'getStorage') {
-        chrome.storage.sync.get(request.key, (result) => {
-            if (chrome.runtime.lastError) {
-                console.error('Error getting storage:', chrome.runtime.lastError);
-                sendResponse({ error: chrome.runtime.lastError.message });
-            } else {
-                sendResponse({ value: result[request.key] });
-            }
-        });
-        return true; // Indicates that the response is sent asynchronously
+// Validate response completeness and style
+function validateResponse(text, style) {
+    // Ensure we have valid inputs
+    if (!text || typeof text !== 'string') {
+        throw new Error("Invalid response text");
+    }
+    if (!style || typeof style !== 'string') {
+        throw new Error("Invalid style parameter");
     }
 
-    if (request.type === 'setStorage') {
-        chrome.storage.sync.set({ [request.key]: request.value }, () => {
-            if (chrome.runtime.lastError) {
-                console.error('Error setting storage:', chrome.runtime.lastError);
-                sendResponse({ success: false, error: chrome.runtime.lastError.message });
-            } else {
-                sendResponse({ success: true });
-            }
-        });
-        return true;
+    const trimmedText = text.trim();
+    if (trimmedText.length === 0) {
+        throw new Error("Response is empty");
     }
 
-    // This is the main entry point for any requests from the extension's UI.
-    if (request.type === 'getExplanation') {
-        (async () => {
-            try {
-                // Step 1: Get the API Key from storage.
-                const { apiKey } = await chrome.storage.sync.get(['apiKey']);
-                if (!apiKey) {
-                    throw new Error("API Key not set. Please set it in the extension options.");
-                }
+    // Check for completeness - be very lenient since OpenRouter responses are generally complete
+    const hasProperEnding = /[.!?)\]"'`*]\s*$/.test(trimmedText) || trimmedText.endsWith(')*') || trimmedText.endsWith('.)');
+    const wordCount = trimmedText.split(/\s+/).length;
+    const meetsLengthRequirement = style === 'Simple'
+        ? wordCount >= 15 && wordCount <= 150
+        : wordCount >= 30;
 
-                // Create a cache key based on the selected text and style
-                const cacheKey = `${request.payload.selectedText}-${request.payload.style}`;
-                const cached = explanationCache.get(cacheKey);
+    // Check for abrupt cuts (very specific - only if it ends with incomplete ellipsis)
+    const hasAbruptCut = trimmedText.endsWith('..') && !trimmedText.endsWith('...');
 
-                // Return cached response if available and not expired
-                if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
-                    return sendResponse({ status: 'success', data: cached.data, cached: true });
-                }
-
-                // Step 2: Get the visible page content
-                const tabId = sender.tab.id;
-                const [results] = await chrome.scripting.executeScript({
-                    target: { tabId },
-                    func: getVisibleText,
-                });
-
-                if (!results?.result) {
-                    throw new Error("Could not extract text from the page. Please try again.");
-                }
-                const visibleText = results.result;
-
-                // Step 3: Prepare the complete payload for the Gemini API
-                const payloadForGemini = {
-                    apiKey,
-                    selectedText: request.payload.selectedText,
-                    fullText: visibleText.substring(0, 15000), // Limit context length
-                    style: request.payload.style,
-                };
-
-                // Step 4: Call the Gemini API with retry logic
-                const explanation = await withRetry(
-                    () => callGeminiAPI(payloadForGemini),
-                    3, // max retries
-                    1000 // initial delay
-                );
-
-                // Cache the successful response
-                explanationCache.set(cacheKey, {
-                    data: explanation,
-                    timestamp: Date.now()
-                });
-
-                sendResponse({
-                    status: 'success',
-                    data: explanation,
-                    cached: false
-                });
-
-            } catch (error) {
-                console.error('Contextual Extension Error:', error);
-
-                // Provide more user-friendly error messages
-                let userMessage = error.message;
-                if (error.message.includes('API key')) {
-                    userMessage = 'Invalid API key. Please check your API key in the extension settings.';
-                } else if (error.message.includes('quota')) {
-                    userMessage = 'API quota exceeded. Please try again later or check your API usage.';
-                } else if (error.message.includes('network')) {
-                    userMessage = 'Network error. Please check your internet connection.';
-                }
-
-                sendResponse({
-                    status: 'error',
-                    message: userMessage,
-                    details: process.env.NODE_ENV === 'development' ? error.message : undefined
-                });
-            }
-        })();
-        // Return true is crucial for asynchronous responses.
-        return true;
+    // Only validate if the response is obviously incomplete
+    if (!meetsLengthRequirement || hasAbruptCut) {
+        console.log('Validation details:', { hasProperEnding, meetsLengthRequirement, hasAbruptCut, wordCount, text: trimmedText.substring(0, 100) + '...' });
+        throw new Error("Response appears incomplete");
     }
-});
+
+    return trimmedText;
+}
 
 // Rate limiting state
 const rateLimit = {
@@ -176,9 +194,7 @@ const rateLimit = {
     processing: false,
 };
 
-/**
- * Processes the API request queue to ensure rate limiting
- */
+// Process API request queue
 async function processQueue() {
     if (rateLimit.processing || rateLimit.queue.length === 0) return;
 
@@ -201,13 +217,11 @@ async function processQueue() {
         reject(error);
     } finally {
         rateLimit.processing = false;
-        processQueue(); // Process next item in queue
+        processQueue();
     }
 }
 
-/**
- * Queues an API call to respect rate limits
- */
+// Queue API call for rate limiting
 async function callGeminiAPI(params) {
     return new Promise((resolve, reject) => {
         rateLimit.queue.push({ resolve, reject, params });
@@ -215,116 +229,315 @@ async function callGeminiAPI(params) {
     });
 }
 
-/**
- * Internal function that makes the actual API call to Gemini
- */
-async function callGeminiAPIInternal({ apiKey, selectedText, fullText, style }) {
-    const maxContextLength = 15000;
-    const truncatedFullText = fullText.substring(0, maxContextLength);
+// Make actual API call to Gemini
+function estimateTokens(text) {
+    if (!text || typeof text !== 'string') {
+        return 0;
+    }
+    return Math.ceil(text.length / 4); // Rough estimate: 1 token ≈ 4 characters
+}
 
-    // Improved prompt with better instructions for the AI
-    const prompt = `
-        You are an expert educator with a knack for making complex topics understandable and engaging.
-        A user has selected the text "${selectedText}".
-        Your task is to explain this concept.
+function getRelevantContext(fullText, selectedText) {
+    // Ensure fullText and selectedText are strings
+    if (!fullText || typeof fullText !== 'string') {
+        return '';
+    }
+    if (!selectedText || typeof selectedText !== 'string') {
+        return fullText.substring(0, 800); // Increased fallback limit
+    }
 
-        Follow these rules based on the requested style:
-        - **If the style is "Simple":** Explain it like you're talking to a curious 10-year-old. Use a simple analogy or a real-world example. Keep it concise, friendly, and encouraging.
-        - **If the style is "Technical":** Provide a more detailed, technically accurate definition suitable for a university student or professional. Assume some prior knowledge but avoid overly obscure jargon.
+    // Find the selected text and get 3 sentences before and after (increased from 2)
+    const sentences = fullText.match(/[^.!?]+[.!?]+/g) || [fullText];
+    let selectedSentenceIdx = -1;
+    for (let i = 0; i < sentences.length; i++) {
+        if (sentences[i].toLowerCase().includes(selectedText.toLowerCase())) {
+            selectedSentenceIdx = i;
+            break;
+        }
+    }
+    if (selectedSentenceIdx === -1) {
+        // fallback to char window with more context
+        const index = fullText.toLowerCase().indexOf(selectedText.toLowerCase());
+        if (index === -1) return fullText.substring(0, 800);
+        const start = Math.max(0, index - 600); // Increased from 500
+        const end = Math.min(fullText.length, index + selectedText.length + 600); // Increased from 500
+        return fullText.substring(start, end);
+    }
+    // Get 3 sentences before and after (increased from 2)
+    const startIdx = Math.max(0, selectedSentenceIdx - 3);
+    const endIdx = Math.min(sentences.length, selectedSentenceIdx + 4);
+    return sentences.slice(startIdx, endIdx).join(' ').trim();
+}
 
-        **Formatting Rules:**
-        - Use Markdown for all formatting.
-        - Use **bold** for key terms.
-        - Use *italics* for emphasis.
-        - Use bullet points (e.g., '-') for lists.
-        - Use code blocks with the code ticks for any code examples.
-        - Structure the explanation with paragraphs and lists for readability.
+async function callGeminiAPIInternal({ apiKey, modelName, selectedText, fullText, style }) {
+    const maxContextLength = 1500;
+    // Validate inputs
+    if (!fullText || typeof fullText !== 'string') {
+        throw new Error('Invalid page content. Please try refreshing the page.');
+    }
+    if (!selectedText || typeof selectedText !== 'string') {
+        throw new Error('Invalid selected text. Please make a new selection.');
+    }
 
-        Generate the explanation for the text "${selectedText}" in the "${style}" style.
-    `;
+    const relevantContext = getRelevantContext(fullText, selectedText);
+    const truncatedFullText = relevantContext.substring(0, maxContextLength);
 
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    // Extract article summary and try to identify the topic/domain
+    let articleSummary = '';
+    const summarySentences = fullText.match(/[^.!?]+[.!?]+/g) || [fullText];
+    articleSummary = summarySentences.slice(0, 4).join(' ').substring(0, 400).trim();
+    if (!articleSummary) articleSummary = fullText.substring(0, 400).trim();
 
-    try {
-        const payload = {
-            contents: [{
-                parts: [{
-                    text: prompt
-                }]
-            }],
-            generationConfig: {
-                temperature: style === 'Technical' ? 0.3 : 0.5,
-                topK: 1,
-                topP: 1,
-                maxOutputTokens: 1024, // Increased for more detailed responses
-                stopSequences: ["---"] // Stop generation if it starts adding sections
-            },
-            safetySettings: [
-                {
-                    category: "HARM_CATEGORY_HARASSMENT",
-                    threshold: "BLOCK_NONE"
+    // Try to identify the domain/topic of the article
+    const topicKeywords = fullText.toLowerCase();
+    const contextKeywords = truncatedFullText.toLowerCase();
+    let articleDomain = '';
+
+    // Check both full text and immediate context for domain indicators
+    if (topicKeywords.includes('grpc') || topicKeywords.includes('rpc') || topicKeywords.includes('protobuf') ||
+        contextKeywords.includes('grpc') || contextKeywords.includes('rpc') || contextKeywords.includes('protobuf') ||
+        topicKeywords.includes('client stub') || topicKeywords.includes('server stub') || topicKeywords.includes('service definition')) {
+        articleDomain = 'gRPC/RPC technology';
+    } else if (topicKeywords.includes('react') || topicKeywords.includes('javascript') || topicKeywords.includes('frontend') ||
+        topicKeywords.includes('node.js') || topicKeywords.includes('npm')) {
+        articleDomain = 'web development';
+    } else if (topicKeywords.includes('database') || topicKeywords.includes('sql') || topicKeywords.includes('mongodb')) {
+        articleDomain = 'database technology';
+    } else if (topicKeywords.includes('kubernetes') || topicKeywords.includes('docker') || topicKeywords.includes('container')) {
+        articleDomain = 'containerization/orchestration';
+    } else if (topicKeywords.includes('machine learning') || topicKeywords.includes('ai') || topicKeywords.includes('neural')) {
+        articleDomain = 'machine learning/AI';
+    }
+
+    // Log for debugging
+    console.log('Domain detection:', { articleDomain, hasGrpc: topicKeywords.includes('grpc'), hasRpc: topicKeywords.includes('rpc') });
+
+    const estimatedTokens = estimateTokens(truncatedFullText) + estimateTokens(selectedText) + estimateTokens(articleSummary) + 150;
+    console.log('Estimated input tokens:', estimatedTokens);
+    if (estimatedTokens > 1200) {
+        throw new Error('Input too long. Please select a shorter phrase or try on a simpler page.');
+    }
+
+    // Compose improved prompt with domain awareness
+    const prompt = `You are an expert explainer. Here is a summary of the article for context:
+"""
+${articleSummary}
+"""
+${articleDomain ? `\nThis article is about: ${articleDomain}\n` : ''}
+
+The user has highlighted the following word or phrase: "${selectedText}".
+
+Here is the surrounding context from the article:
+"""
+${truncatedFullText}
+"""
+
+Please explain "${selectedText}" in a ${style.toLowerCase()} way, making sure your answer is SPECIFICALLY relevant to the article's context and domain. 
+
+CRITICAL: Do NOT give generic web development or general computer science definitions. Look at the surrounding context and article summary to understand the specific domain and explain the term ONLY as it relates to that domain.
+
+CONTEXT ANALYSIS: Based on the article content and surrounding text, determine what specific technology or domain this term belongs to, then explain it within that context.
+
+${style === 'Simple' ? `
+Simple Explanation:
+- Explain like to a 10-year-old using simple words.
+- Use a relatable analogy that fits the article's specific domain.
+- Keep it short (20-100 words).
+- Format: Definition (specific to this article's exact context), example, why it matters in this domain.
+` : `
+Technical Explanation:
+- Provide a detailed, precise explanation specific to the article's exact domain.
+- Use technical terms appropriate to the specific context.
+- Include context from the article.
+- Format: Definition (domain-specific), implementation details, role in the specific system described.
+`}`;
+
+    // OpenRouter API integration
+    const apiUrl = 'https://openrouter.ai/api/v1/chat/completions';
+    const outputTokenSteps = [1024, 768, 512];
+    let lastError;
+    for (let i = 0; i < outputTokenSteps.length; i++) {
+        try {
+            if (!apiKey || !apiKey.startsWith('sk-or-')) {
+                throw new Error('Invalid or missing OpenRouter API key. Please set a valid key in the extension settings.');
+            }
+            if (!modelName || typeof modelName !== 'string') {
+                throw new Error('Model name not set. Please set it in the extension settings.');
+            }
+            const payload = {
+                model: modelName,
+                messages: [
+                    {
+                        role: 'user',
+                        content: prompt
+                    }
+                ],
+                max_tokens: outputTokenSteps[i],
+                temperature: style === 'Technical' ? 0.3 : 0.7
+            };
+
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 45000);
+
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
                 },
-                {
-                    category: "HARM_CATEGORY_HATE_SPEECH",
-                    threshold: "BLOCK_NONE"
-                },
-                {
-                    category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                    threshold: "BLOCK_NONE"
-                },
-                {
-                    category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-                    threshold: "BLOCK_NONE"
-                }
-            ]
-        };
+                body: JSON.stringify(payload),
+                signal: controller.signal
+            });
 
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+            clearTimeout(timeoutId);
 
-        const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-goog-api-client': 'contextual-extension/1.0.0'
-            },
-            body: JSON.stringify(payload),
-            signal: controller.signal
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-            const errorBody = await response.json().catch(() => ({}));
-            console.error("API Error Response:", errorBody);
-
-            let errorMessage = `API request failed with status ${response.status}`;
-            if (errorBody.error) {
-                errorMessage += `: ${errorBody.error.message || JSON.stringify(errorBody.error)}`;
+            if (!response.ok) {
+                const errorBody = await response.json().catch(() => ({}));
+                throw new Error(errorBody.error?.message || `API request failed with status ${response.status}`);
             }
 
-            const error = new Error(errorMessage);
-            error.status = response.status;
-            error.details = errorBody;
-            throw error;
-        }
+            const result = await response.json();
+            console.log('OpenRouter API response:', JSON.stringify(result, null, 2));
 
-        const result = await response.json();
-
-        if (result.candidates?.[0]?.content?.parts?.[0]?.text) {
-            return result.candidates[0].content.parts[0].text.trim();
-        } else if (result.promptFeedback?.blockReason) {
-            throw new Error(`Content blocked: ${result.promptFeedback.blockReason}`);
-        } else {
-            console.error("Unexpected API response format:", result);
-            throw new Error("Unexpected response format from the API");
+            if (!result?.choices?.length) {
+                console.error('No choices in API response:', result);
+                throw new Error('The AI service returned no response choices. Please try again.');
+            }
+            const choice = result.choices[0];
+            if (!choice?.message?.content) {
+                console.error('Unexpected API response format:', result);
+                if (choice?.finish_reason === 'length') {
+                    lastError = new Error("The AI's response was cut short by the OpenRouter API. All output token limits failed. Try a shorter selection or simpler page.");
+                    continue;
+                }
+                throw new Error('The API response was incomplete or missing expected fields');
+            }
+            const text = choice.message.content.trim();
+            if (!text) {
+                if (choice.finish_reason === 'length') {
+                    lastError = new Error("The AI's response was cut short by the OpenRouter API. All output token limits failed. Try a shorter selection or simpler page.");
+                    continue;
+                }
+                throw new Error('The API returned an empty response');
+            }
+            return text;
+        } catch (error) {
+            lastError = error;
         }
-    } catch (error) {
-        if (error.name === 'AbortError') {
-            throw new Error("Request timed out. Please try again.");
-        }
-        console.error("API call failed:", error);
-        throw error;
     }
-    throw new Error("Could not extract explanation from API response.");
+    console.error('API call failed:', lastError);
+    throw lastError || new Error("The AI's response was cut short by the OpenRouter API. All output token limits failed. Try a shorter selection or simpler page.");
 }
+
+// Message handler
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.type === 'getStorage') {
+        chrome.storage.sync.get(request.key, (result) => {
+            if (chrome.runtime.lastError) {
+                console.error('Error getting storage:', chrome.runtime.lastError);
+                sendResponse({ error: chrome.runtime.lastError.message });
+            } else {
+                sendResponse({ value: result[request.key] });
+            }
+        });
+        return true;
+    }
+
+    if (request.type === 'setStorage') {
+        chrome.storage.sync.set({ [request.key]: request.value }, () => {
+            if (chrome.runtime.lastError) {
+                console.error('Error setting storage:', chrome.runtime.lastError);
+                sendResponse({ success: false, error: chrome.runtime.lastError.message });
+            } else {
+                sendResponse({ success: true });
+            }
+        });
+        return true;
+    }
+
+    if (request.type === 'getExplanation') {
+        (async () => {
+            try {
+                const { apiKey } = await chrome.storage.sync.get(['apiKey']);
+                const { modelName } = await chrome.storage.sync.get(['modelName']);
+                if (!apiKey) {
+                    throw new Error('OpenRouter API Key not set. Please set it in the extension settings.');
+                }
+                if (!modelName) {
+                    throw new Error('Model name not set. Please set it in the extension settings.');
+                }
+
+                const cacheKey = `${request.payload.selectedText}-${request.payload.style}-${modelName}`;
+                const cached = explanationCache.get(cacheKey);
+
+                if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
+                    return sendResponse({ status: 'success', data: cached.data, cached: true });
+                }
+
+                const tabId = sender.tab.id;
+                let results;
+                try {
+                    [results] = await chrome.scripting.executeScript({
+                        target: { tabId },
+                        func: getVisibleText,
+                    });
+                } catch (scriptError) {
+                    console.error('Script execution failed:', scriptError);
+                    throw new Error('Failed to access page content. Please refresh the page and try again.');
+                }
+
+                if (!results?.result) {
+                    throw new Error('Could not extract text from the page. Please refresh and try again.');
+                }
+
+                const pageText = results.result;
+                if (!pageText || typeof pageText !== 'string' || pageText.trim().length === 0) {
+                    throw new Error('No readable content found on this page. Please try a different page.');
+                }
+
+                // Additional check for meaningful content
+                if (pageText.includes('Unable to extract text') || pageText.includes('No content available')) {
+                    throw new Error('This page does not contain readable text content. Please try a different page.');
+                }
+
+                const apiParams = {
+                    apiKey,
+                    modelName,
+                    selectedText: request.payload.selectedText,
+                    fullText: pageText.substring(0, 2000),
+                    style: request.payload.style
+                };
+
+                // Directly call the API (no retry logic)
+                const explanation = await callGeminiAPI(apiParams);
+
+                const validatedExplanation = validateResponse(explanation, request.payload.style);
+
+                explanationCache.set(cacheKey, {
+                    data: validatedExplanation,
+                    timestamp: Date.now()
+                });
+
+                sendResponse({
+                    status: 'success',
+                    data: validatedExplanation,
+                    cached: false
+                });
+
+                return true;
+
+            } catch (error) {
+                console.error('Explanation error:', error);
+                sendResponse({
+                    status: 'error',
+                    message: error.message || 'Unknown error',
+                    details: error.stack // Include stack trace for debugging
+                });
+
+                return true;
+            }
+        })();
+
+        return true;
+    }
+});

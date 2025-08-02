@@ -9,7 +9,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const explanationResultEl = document.getElementById('explanation-result');
     const popupContainer = document.getElementById('popup-container');
     const header = document.getElementById('popup-header');
-    const resizeHandle = document.getElementById('resize-handle');
+
+    // Get all resize handles
+    const resizeHandles = {
+        nw: document.getElementById('resize-handle-nw'),
+        ne: document.getElementById('resize-handle-ne'),
+        sw: document.getElementById('resize-handle-sw'),
+        se: document.getElementById('resize-handle-se'),
+        n: document.getElementById('resize-handle-n'),
+        s: document.getElementById('resize-handle-s'),
+        w: document.getElementById('resize-handle-w'),
+        e: document.getElementById('resize-handle-e')
+    };
 
     let currentStyle = 'Simple';
     let currentSelectedText = '';
@@ -20,8 +31,14 @@ document.addEventListener('DOMContentLoaded', () => {
         // Ensure the message is from the parent window (content script)
         if (event.source !== window.parent) return;
 
-        const { type, selectedText } = event.data;
-        if (type === 'fetchExplanation') {
+        if (event.data.type === 'popupRect') {
+            const rect = event.data.rect;
+            initialWidth = rect.width;
+            initialHeight = rect.height;
+            initialLeft = rect.left;
+            initialTop = rect.top;
+        } else if (event.data.type === 'fetchExplanation') {
+            const { selectedText } = event.data;
             currentSelectedText = selectedText;
             selectedTextEl.textContent = currentSelectedText;
             fetchExplanation();
@@ -53,24 +70,67 @@ document.addEventListener('DOMContentLoaded', () => {
         showLoader();
 
         try {
-            const response = await chrome.runtime.sendMessage({
-                type: 'getExplanation',
-                payload: {
-                    selectedText: currentSelectedText,
-                    style: currentStyle
-                }
+            // Validate API key before making the request
+            const { apiKey } = await new Promise((resolve) => {
+                chrome.runtime.sendMessage({ type: 'getStorage', key: 'apiKey' }, (response) => {
+                    resolve({ apiKey: response?.value });
+                });
             });
 
-            if (response && response.status === 'success') {
+            if (!apiKey || !apiKey.startsWith('sk-or-')) {
+                throw new Error('No valid API key set. Please configure a valid OpenRouter API key in the extension settings.');
+            }
+
+            // Add timeout handling
+            const response = await Promise.race([
+                chrome.runtime.sendMessage({
+                    type: 'getExplanation',
+                    payload: {
+                        selectedText: currentSelectedText,
+                        style: currentStyle
+                    }
+                }),
+                new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('Request timed out after 45 seconds')), 45000)
+                )
+            ]);
+
+            // Enhanced response validation
+            if (!response) {
+                throw new Error('No response received from background script');
+            }
+
+            if (response.status === 'success' && response.data) {
                 displayResult(response.data);
+            } else if (response.status === 'error') {
+                throw new Error(response.message || 'Unknown error from background script');
             } else {
-                const errorMessage = response ? response.message : 'An unknown error occurred.';
-                throw new Error(errorMessage);
+                throw new Error('Invalid response format from background script');
             }
 
         } catch (error) {
-            console.error("Communication with background script failed:", error);
-            displayError("Connection to the background process failed. This can happen if the extension was idle. Please close and reopen the popup to try again.");
+            console.error('Communication error:', error);
+            let errorMessage = 'Failed to get explanation. ';
+
+            if (error.message.includes('timeout') || error.message.includes('Timeout')) {
+                errorMessage += 'The request took too long. Please check your internet connection and try again.';
+            } else if (error.message.includes('context invalidated') || error.message.includes('Extension context')) {
+                errorMessage += 'Extension context was lost. Please reopen the popup.';
+            } else if (error.message.includes('API key') || error.message.includes('Invalid or missing API key')) {
+                errorMessage += 'Please verify your API key in the extension settings.';
+            } else if (error.message.includes('Token limit exceeded')) {
+                errorMessage += 'The selected text or page content is too long. Try selecting a shorter phrase or reloading the page.';
+            } else if (error.message.includes('No readable content')) {
+                errorMessage += 'This page doesn\'t contain readable text content. Please try a different page.';
+            } else if (error.message.includes('Invalid selected text')) {
+                errorMessage += 'Please make a new text selection and try again.';
+            } else if (error.message.includes('Invalid page content')) {
+                errorMessage += 'Please refresh the page and try again.';
+            } else {
+                errorMessage += error.message || 'Please try again or check your API key.';
+            }
+
+            displayError(errorMessage);
         } finally {
             hideLoader();
         }
@@ -101,96 +161,40 @@ document.addEventListener('DOMContentLoaded', () => {
                 emoji: true
             });
             explanationResultEl.innerHTML = converter.makeHtml(text);
-            // After content is set, request an auto-resize
-            requestAnimationFrame(() => {
-                // Add a small delay to allow images/elements to render
-                setTimeout(autoResize, 50);
-            });
         } else {
-            explanationResultEl.innerHTML = `<pre>${text}</pre>`;
+            // Fallback: convert basic markdown manually
+            const formattedText = text
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                .replace(/`(.*?)`/g, '<code>$1</code>')
+                .replace(/\n\n/g, '</p><p>')
+                .replace(/\n/g, '<br>');
+            explanationResultEl.innerHTML = `<p>${formattedText}</p>`;
         }
+
+        // Ensure content is fully visible
+        setTimeout(() => {
+            explanationResultEl.scrollTop = 0;
+        }, 100);
     }
 
     function displayError(message) {
+        // Enhanced error message handling
+        if (message.includes('Token limit exceeded')) {
+            message = 'The selected text or page content is too long. Try selecting a shorter phrase or reloading the page.';
+        } else if (message.includes('No readable content')) {
+            message = 'This page doesn\'t contain readable text content. Please try a different page.';
+        } else if (message.includes('Invalid selected text')) {
+            message = 'Please make a new text selection and try again.';
+        } else if (message.includes('Invalid page content')) {
+            message = 'Please refresh the page and try again.';
+        }
+
         explanationResultEl.innerHTML = `<p class="error">${message}</p>`;
-        autoResize();
     }
 
-    function autoResize() {
-        const PADDING = 20; // Extra space
-        const newHeight = Math.min(document.body.scrollHeight + PADDING, window.screen.availHeight * 0.9);
-        window.parent.postMessage({ type: 'autoResizePopup', height: newHeight }, '*');
-    }
+    // --- DRAG AND RESIZE FUNCTIONALITY DISABLED ---
+    // All drag and resize functionality has been removed
 
-    // --- DRAG AND RESIZE LOGIC (OPTIMIZED) ---
-
-    function createThrottledHandler(onMove) {
-        let isTicking = false;
-        let lastEvent = null;
-
-        const update = () => {
-            isTicking = false;
-            if (lastEvent) {
-                onMove(lastEvent);
-            }
-        };
-
-        return (e) => {
-            lastEvent = e;
-            if (!isTicking) {
-                window.requestAnimationFrame(update);
-                isTicking = true;
-            }
-        };
-    }
-
-    // Dragging
-    header.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        popupContainer.classList.add('dragging');
-        let lastX = e.clientX;
-        let lastY = e.clientY;
-
-        const onMouseMove = createThrottledHandler((moveEvent) => {
-            const dx = moveEvent.clientX - lastX;
-            const dy = moveEvent.clientY - lastY;
-            lastX = moveEvent.clientX;
-            lastY = moveEvent.clientY;
-            window.parent.postMessage({ type: 'dragPopup', dx, dy }, '*');
-        });
-
-        function onMouseUp() {
-            popupContainer.classList.remove('dragging');
-            document.removeEventListener('mousemove', onMouseMove);
-            document.removeEventListener('mouseup', onMouseUp);
-        }
-
-        document.addEventListener('mousemove', onMouseMove);
-        document.addEventListener('mouseup', onMouseUp);
-    });
-
-    // Resizing
-    resizeHandle.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        popupContainer.classList.add('resizing');
-        let lastX = e.clientX;
-        let lastY = e.clientY;
-
-        const onMouseMove = createThrottledHandler((moveEvent) => {
-            const dx = moveEvent.clientX - lastX;
-            const dy = moveEvent.clientY - lastY;
-            lastX = moveEvent.clientX;
-            lastY = moveEvent.clientY;
-            window.parent.postMessage({ type: 'resizePopup', dx, dy }, '*');
-        });
-
-        function onMouseUp() {
-            popupContainer.classList.remove('resizing');
-            document.removeEventListener('mousemove', onMouseMove);
-            document.removeEventListener('mouseup', onMouseUp);
-        }
-
-        document.addEventListener('mousemove', onMouseMove);
-        document.addEventListener('mouseup', onMouseUp);
-    });
+    console.log('Drag and resize functionality is disabled');
 });

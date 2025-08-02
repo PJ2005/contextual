@@ -1,23 +1,52 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <title>Contextual Settings</title>
     <link rel="stylesheet" href="popup.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
+
 <body>
     <div class="container">
-        <h2>Settings</h2>
-        <p class="description">
-            Please enter your Gemini API key to use the extension. You can get one from Google AI Studio.
-        </p>
-        <div class="input-group">
-            <label for="api-key">Gemini API Key</label>
-            <input type="password" id="api-key" placeholder="Enter your API key">
+        <div class="header">
+            <div class="icon">⚡</div>
+            <h1>Contextual AI</h1>
+            <p class="tagline">Smart explanations, anywhere</p>
         </div>
-        <button id="save-btn">Save Key</button>
-        <p id="status-msg"></p>
+
+        <div class="form-section">
+            <div class="field">
+                <label for="api-key">OpenRouter API Key</label>
+                <div class="input-wrapper">
+                    <input type="password" id="api-key" placeholder="sk-or-v1-..." autocomplete="off">
+                    <div class="input-icon">🔐</div>
+                </div>
+                <div class="field-help">
+                    Get your key from <a href="https://openrouter.ai/keys" target="_blank">openrouter.ai/keys</a>
+                </div>
+            </div>
+
+            <div class="field">
+                <label for="model-name">AI Model</label>
+                <div class="input-wrapper">
+                    <input type="text" id="model-name" placeholder="deepseek/deepseek-chat-v3-0324" autocomplete="off">
+                    <div class="input-icon">🤖</div>
+                </div>
+                <div class="field-help">
+                    Browse models at <a href="https://openrouter.ai/models" target="_blank">openrouter.ai/models</a>
+                </div>
+            </div>
+
+            <button id="save-btn" class="save-button">
+                <span class="button-text">Save Configuration</span>
+                <div class="button-icon">✓</div>
+            </button>
+
+            <div id="status-msg" class="status-message"></div>
+        </div>
     </div>
     <script src="popup.js"></script>
 </body>
+
 </html>

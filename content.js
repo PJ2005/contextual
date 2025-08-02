@@ -5,6 +5,10 @@ let popupIframe = null;
 let lastSelection = null;
 let isPopupOpen = false;
 let selectionObserver = null;
+let popupInitialX = 0;
+let popupInitialY = 0;
+let popupInitialWidth = 420;
+let popupInitialHeight = 500;
 
 // --- SETTINGS CACHE ---
 // Cache settings locally to avoid async calls in event handlers
@@ -108,6 +112,14 @@ function createPopup() {
         }
         iframe.src = explanationUrl;
         iframe.className = 'hidden';
+
+        // Set initial dimensions and positioning
+        iframe.style.width = '420px';
+        iframe.style.height = '500px';
+        iframe.style.minWidth = '300px';
+        iframe.style.minHeight = '400px';
+        iframe.style.maxWidth = '90vw';
+        iframe.style.maxHeight = '90vh';
 
         // **THE FIX IS HERE (Part 1):**
         // We add an `onload` handler to the iframe. This function will only run
@@ -295,22 +307,76 @@ function getStorageItem(key, callback) {
     }
 }
 
+let isSelectionActive = false;
+
 const handleSelectionChange = debounce(() => {
-    // Check if we're in a context where we can run
-    if (typeof chrome === 'undefined' || !chrome.runtime?.id) {
+    console.log('Selection changed: contextValid=', checkExtensionContext());
+    if (!checkExtensionContext()) {
         return;
     }
 
     const selectedText = getSelectedText();
+    console.log('Selected text:', selectedText);
 
     if (selectedText.length > 0 && selectedText.length < 1000) {
+        isSelectionActive = true;
         lastSelection = selectedText;
+        console.log('Positioning trigger icon');
         positionTriggerIcon(window.getSelection());
-        // Only show the icon; popup will open on icon click
     } else if (triggerIcon) {
+        isSelectionActive = false;
+        console.log('Hiding trigger icon');
         triggerIcon.style.display = 'none';
     }
 }, 500);
+
+function cleanup() {
+    if (!checkExtensionContext()) {
+        extensionContextValid = false;
+        try {
+            if (cleanupListeners) {
+                cleanupListeners();
+                cleanupListeners = null;
+            }
+            window.removeEventListener('message', handleMessage);
+            if (triggerIcon?.parentNode && !isSelectionActive) {
+                triggerIcon.parentNode.removeChild(triggerIcon);
+                triggerIcon = null;
+            }
+            if (popupIframe?.parentNode) {
+                document.body.removeChild(popupIframe);
+                popupIframe = null;
+            }
+            document.body.classList.remove('contextual-popup-open');
+        } catch (e) {
+            console.error('Error during minimal cleanup:', e);
+        }
+        return;
+    }
+
+    // Full cleanup for valid context
+    try {
+        if (cleanupListeners) {
+            cleanupListeners();
+            cleanupListeners = null;
+        }
+        window.removeEventListener('message', handleMessage);
+        if (chrome.runtime?.id) {
+            chrome.runtime.onMessage.removeListener(handleExtensionMessage);
+        }
+        if (triggerIcon?.parentNode && !isSelectionActive) {
+            triggerIcon.parentNode.removeChild(triggerIcon);
+            triggerIcon = null;
+        }
+        if (popupIframe?.parentNode) {
+            document.body.removeChild(popupIframe);
+            popupIframe = null;
+        }
+        document.body.classList.remove('contextual-popup-open');
+    } catch (e) {
+        console.error('Error cleaning up:', e);
+    }
+}
 
 function handleClickOutside(event) {
     if (!triggerIcon || !popupIframe) return;
@@ -373,78 +439,91 @@ function setupEventListeners() {
 }
 
 // --- MESSAGE HANDLING ---
-
 function handleMessage(event) {
-    // Check if message is coming from our popup iframe
-    if (popupIframe && event.source === popupIframe.contentWindow) {
-        const { type, dx, dy, height } = event.data;
-        if (type === 'closeSidebar') {
+    // Add this check first
+    if (typeof chrome === 'undefined' || !chrome.runtime?.id) {
+        return;
+    }
+
+    if (!popupIframe || event.source !== popupIframe.contentWindow) return;
+
+    const { type, direction, dx, dy } = event.data;
+
+    switch (type) {
+        case 'closeSidebar':
             togglePopup(false);
-        } else if (type === 'dragPopup') {
-            const rect = popupIframe.getBoundingClientRect();
-            // Ensure the popup doesn't go off-screen
-            const newLeft = Math.max(0, Math.min(window.innerWidth - rect.width, rect.left + dx));
-            const newTop = Math.max(0, Math.min(window.innerHeight - rect.height, rect.top + dy));
-            popupIframe.style.left = `${newLeft}px`;
-            popupIframe.style.top = `${newTop}px`;
-            // If we are dragging, we are no longer in the default top-right position
-            popupIframe.style.right = 'auto';
-            popupIframe.style.transform = 'none';
-        } else if (type === 'resizePopup') {
-            const rect = popupIframe.getBoundingClientRect();
-            popupIframe.style.width = `${rect.width + dx}px`;
-            popupIframe.style.height = `${rect.height + dy}px`;
-        } else if (type === 'autoResizePopup') {
-            popupIframe.style.height = `${height}px`;
-        }
+            break;
+
+        // Drag and resize functionality has been disabled
+        case 'startDrag':
+        case 'dragPopup':
+        case 'startResize':
+        case 'resizePopup':
+            // Do nothing - functionality disabled
+            break;
     }
 }
+
+// Drag and resize functions have been removed - functionality disabled
 
 // --- LIFECYCLE MANAGEMENT ---
 
 let cleanupListeners = null;
+let extensionContextValid = true;
 
 function handleExtensionMessage(message, sender, sendResponse) {
-    // Handle extension messages here
-    if (message.type === 'ping') {
-        sendResponse({ status: 'pong' });
-        return true;
+    if (!extensionContextValid) {
+        return false;
     }
 
-    // Add more message handlers as needed
-    return false;
+    try {
+        if (message.type === 'ping') {
+            sendResponse({ status: 'pong' });
+            return true;
+        }
+        return false;
+    } catch (error) {
+        console.error('Message handler error:', error);
+        return false;
+    }
 }
 
-function cleanup() {
-    // Clean up event listeners
-    if (cleanupListeners) {
-        cleanupListeners();
-        cleanupListeners = null;
+// Add context invalidation detection
+function checkExtensionContext() {
+    try {
+        if (typeof chrome === 'undefined' || !chrome.runtime?.id) {
+            console.warn('Extension context check failed: chrome.runtime.id is unavailable');
+            // Attempt to reconnect after a short delay
+            setTimeout(() => {
+                if (typeof chrome !== 'undefined' && chrome.runtime?.id) {
+                    console.log('Extension context restored');
+                    initializeExtension();
+                } else {
+                    console.error('Extension context permanently invalidated');
+                    extensionContextValid = false;
+                }
+            }, 1000);
+            return false;
+        }
+        return true;
+    } catch (error) {
+        console.error('Error checking extension context:', error);
+        return false;
     }
-
-    // Remove message listeners
-    window.removeEventListener('message', handleMessage);
-    chrome.runtime.onMessage.removeListener(handleExtensionMessage);
-    window.removeEventListener('unload', cleanup);
-
-    // Clean up UI elements
-    if (triggerIcon && triggerIcon.parentNode) {
-        triggerIcon.parentNode.removeChild(triggerIcon);
-        triggerIcon = null;
-    }
-
-    if (popupIframe && popupIframe.parentNode) {
-        document.body.removeChild(popupIframe);
-        popupIframe = null;
-    }
-
-    console.log('Contextual extension cleaned up');
 }
 
 function initializeExtension() {
+    if (!checkExtensionContext()) {
+        return;
+    }
+
     try {
         // Create UI elements
         triggerIcon = createTriggerIcon();
+        // Initialize popupIframe only when needed (lazy loading)
+        if (!popupIframe) {
+            popupIframe = createPopup();
+        }
 
         // Set up event listeners and store cleanup function
         cleanupListeners = setupEventListeners();
@@ -452,111 +531,104 @@ function initializeExtension() {
         // Listen for messages from the sidebar
         window.addEventListener('message', handleMessage);
 
-        // Listen for extension messages
-        chrome.runtime.onMessage.addListener(handleExtensionMessage);
+        // Add message listener with error handling
+        try {
+            chrome.runtime.onMessage.addListener(handleExtensionMessage);
+        } catch (e) {
+            console.error('Failed to add message listener:', e);
+            extensionContextValid = false;
+            return;
+        }
 
-        // Add cleanup handlers for different page lifecycle events
-        // Use pagehide for modern browsers and beforeunload as fallback
-        window.addEventListener('pagehide', cleanup);
-        window.addEventListener('beforeunload', cleanup);
+        // Add cleanup handlers with debouncing
+        const debouncedCleanup = debounce(cleanup, 100);
+        window.addEventListener('pagehide', debouncedCleanup);
+        window.addEventListener('beforeunload', debouncedCleanup);
 
-        // Fetch and cache settings on initialization
-        getStorageItem('autoOpenSidebar', (value) => {
-            if (value !== null) {
-                settings.autoOpenSidebar = value;
+        // Add styles by linking external stylesheet
+        const style = document.createElement('link');
+        style.rel = 'stylesheet';
+        style.href = chrome.runtime.getURL('styles.css');
+        document.head.appendChild(style);
+
+        // Observe SPA route changes with debouncing
+        const debouncedReinitialize = debounce(() => {
+            if (checkExtensionContext()) {
+                // Only reinitialize if significant changes are detected
+                cleanup();
+                initializeExtension();
+            }
+        }, 500);
+
+        const observer = new MutationObserver((mutations) => {
+            // Filter mutations to avoid unnecessary reinitialization
+            const significantChange = mutations.some(mutation => {
+                // Example: Only react to changes in <head> or specific elements
+                return mutation.target.tagName === 'HEAD' || mutation.target.matches('.specific-container');
+            });
+
+            if (significantChange) {
+                debouncedReinitialize();
             }
         });
 
-        // Add styles for the extension
-        const style = document.createElement('style');
-        style.textContent = `
-            #contextual-trigger-icon {
-                position: absolute;
-                z-index: 2147483647;
-                width: 32px;
-                height: 32px;
-                border-radius: 50%;
-                background-color: #4285f4;
-                color: white;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                cursor: pointer;
-                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-                transition: transform 0.2s, box-shadow 0.2s;
-                pointer-events: auto;
-            }
-            
-            #contextual-trigger-icon:hover {
-                transform: scale(1.1);
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-            }
-            
-            #contextual-trigger-icon svg {
-                width: 18px;
-                height: 18px;
-            }
-            
-            #contextual-popup-iframe {
-                position: fixed;
-                top: 20px;
-                right: 20px;
-                left: auto;
-                transform: none;
-                width: 420px;
-                min-width: 300px;
-                max-width: 90vw;
-                height: auto; /* Allow height to be set by content */
-                min-height: 200px;
-                max-height: 90vh;
-                border: none;
-                z-index: 2147483647;
-                border-radius: 12px;
-                box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-                background: white;
-                transition: opacity 0.3s ease, transform 0.3s ease;
-            }
-            
-            #contextual-popup-iframe.hidden {
-                opacity: 0;
-                transform: scale(0.95);
-                pointer-events: none;
-            }
-            
-            .contextual-popup-open {
-                overflow: hidden;
-            }
-            
-            .contextual-popup-open::before {
-                content: '';
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background: rgba(0, 0, 0, 0.5);
-                z-index: 2147483646;
-                backdrop-filter: blur(2px);
-                /* Add a class to prevent interaction while dragging */
-            }
+        observer.observe(document.documentElement, { childList: true, subtree: false }); // Narrow scope to document.documentElement
 
-            .contextual-popup-dragging::before {
-                cursor: move;
-            }
-        `;
-        document.head.appendChild(style);
+        // Combine cleanup for event listeners and observer
+        const originalCleanupListeners = cleanupListeners;
+        cleanupListeners = () => {
+            observer.disconnect();
+            originalCleanupListeners();
+            document.removeEventListener('pagehide', debouncedCleanup);
+            document.removeEventListener('beforeunload', debouncedCleanup);
+            window.removeEventListener('message', handleMessage);
+        };
 
         console.log('Contextual extension initialized');
     } catch (error) {
         console.error('Failed to initialize extension:', error);
+        // Retry initialization after a delay
+        setTimeout(() => {
+            if (checkExtensionContext()) {
+                initializeExtension();
+            }
+        }, 1000);
     }
 }
 
-// Initialize the extension when the DOM is ready
+// Initialize with context check
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initializeExtension);
+    document.addEventListener('DOMContentLoaded', () => {
+        if (checkExtensionContext()) {
+            initializeExtension();
+        }
+    });
 } else {
-    // If the document is already loaded, initialize immediately
-    // but use setTimeout to ensure the rest of the page has loaded
-    setTimeout(initializeExtension, 0);
+    setTimeout(() => {
+        if (checkExtensionContext()) {
+            initializeExtension();
+        }
+    }, 0);
 }
+
+// Periodic context checking (increased interval for performance)
+// Reduce context check frequency
+setInterval(checkExtensionContext, 30000); // Check every 30 seconds
+
+// Initialize with context check
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        if (checkExtensionContext()) {
+            initializeExtension();
+        }
+    });
+} else {
+    setTimeout(() => {
+        if (checkExtensionContext()) {
+            initializeExtension();
+        }
+    }, 0);
+}
+
+// Periodic context checking
+setInterval(checkExtensionContext, 5000);
