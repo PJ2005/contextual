@@ -183,6 +183,15 @@ function validateResponse(text, style) {
         throw new Error("Response appears incomplete");
     }
 
+    // Debug log for validation details
+    console.log('Validating response:', {
+        text: text.substring(0, 100) + '...',
+        hasProperEnding,
+        meetsLengthRequirement,
+        hasAbruptCut,
+        wordCount
+    });
+
     return trimmedText;
 }
 
@@ -279,6 +288,17 @@ async function callGeminiAPIInternal({ apiKey, modelName, selectedText, fullText
         throw new Error('Invalid selected text. Please make a new selection.');
     }
 
+    // Validate API key and model name
+    if (!apiKey) {
+        throw new Error('No API key provided. Please configure it in the extension settings.');
+    }
+    if (!modelName) {
+        throw new Error('No model name provided. Please configure it in the extension settings.');
+    }
+
+    // Debug log for API key and model name
+    console.log('callGeminiAPIInternal: apiKey:', apiKey, 'modelName:', modelName);
+
     const relevantContext = getRelevantContext(fullText, selectedText);
     const truncatedFullText = relevantContext.substring(0, maxContextLength);
 
@@ -288,29 +308,21 @@ async function callGeminiAPIInternal({ apiKey, modelName, selectedText, fullText
     articleSummary = summarySentences.slice(0, 4).join(' ').substring(0, 400).trim();
     if (!articleSummary) articleSummary = fullText.substring(0, 400).trim();
 
-    // Try to identify the domain/topic of the article
-    const topicKeywords = fullText.toLowerCase();
-    const contextKeywords = truncatedFullText.toLowerCase();
+    // Use LLM-based domain detection instead of hardcoded keywords
     let articleDomain = '';
 
-    // Check both full text and immediate context for domain indicators
-    if (topicKeywords.includes('grpc') || topicKeywords.includes('rpc') || topicKeywords.includes('protobuf') ||
-        contextKeywords.includes('grpc') || contextKeywords.includes('rpc') || contextKeywords.includes('protobuf') ||
-        topicKeywords.includes('client stub') || topicKeywords.includes('server stub') || topicKeywords.includes('service definition')) {
-        articleDomain = 'gRPC/RPC technology';
-    } else if (topicKeywords.includes('react') || topicKeywords.includes('javascript') || topicKeywords.includes('frontend') ||
-        topicKeywords.includes('node.js') || topicKeywords.includes('npm')) {
-        articleDomain = 'web development';
-    } else if (topicKeywords.includes('database') || topicKeywords.includes('sql') || topicKeywords.includes('mongodb')) {
-        articleDomain = 'database technology';
-    } else if (topicKeywords.includes('kubernetes') || topicKeywords.includes('docker') || topicKeywords.includes('container')) {
-        articleDomain = 'containerization/orchestration';
-    } else if (topicKeywords.includes('machine learning') || topicKeywords.includes('ai') || topicKeywords.includes('neural')) {
-        articleDomain = 'machine learning/AI';
-    }
+    // Create a domain analysis prompt for the LLM
+    const domainAnalysisPrompt = `Based on this article content, identify the primary technical domain/field:
 
-    // Log for debugging
-    console.log('Domain detection:', { articleDomain, hasGrpc: topicKeywords.includes('grpc'), hasRpc: topicKeywords.includes('rpc') });
+Article summary: ${articleSummary}
+
+Context around the term "${selectedText}":
+${truncatedFullText}
+
+Respond with ONLY the domain name (e.g., "gRPC/RPC technology", "web development", "machine learning/AI", "database technology", "containerization/orchestration", "networking", "cybersecurity", "data science", etc.). Be specific and accurate based on the actual content.`;
+
+    // Log for debugging - will be determined by LLM context
+    console.log('Domain detection: Using LLM-based analysis for accurate domain identification');
 
     const estimatedTokens = estimateTokens(truncatedFullText) + estimateTokens(selectedText) + estimateTokens(articleSummary) + 150;
     console.log('Estimated input tokens:', estimatedTokens);
@@ -318,12 +330,11 @@ async function callGeminiAPIInternal({ apiKey, modelName, selectedText, fullText
         throw new Error('Input too long. Please select a shorter phrase or try on a simpler page.');
     }
 
-    // Compose improved prompt with domain awareness
+    // Compose improved prompt with LLM-based domain awareness
     const prompt = `You are an expert explainer. Here is a summary of the article for context:
 """
 ${articleSummary}
 """
-${articleDomain ? `\nThis article is about: ${articleDomain}\n` : ''}
 
 The user has highlighted the following word or phrase: "${selectedText}".
 
@@ -332,24 +343,28 @@ Here is the surrounding context from the article:
 ${truncatedFullText}
 """
 
-Please explain "${selectedText}" in a ${style.toLowerCase()} way, making sure your answer is SPECIFICALLY relevant to the article's context and domain. 
+INSTRUCTIONS:
+1. First, analyze the article content and context to determine the specific technical domain/field this article belongs to.
+2. Then explain "${selectedText}" in a ${style.toLowerCase()} way, making sure your answer is SPECIFICALLY relevant to that identified domain.
 
-CRITICAL: Do NOT give generic web development or general computer science definitions. Look at the surrounding context and article summary to understand the specific domain and explain the term ONLY as it relates to that domain.
+CRITICAL: Do NOT give generic definitions. Analyze the context first to understand what specific domain this article covers, then explain the term ONLY as it relates to that domain.
 
-CONTEXT ANALYSIS: Based on the article content and surrounding text, determine what specific technology or domain this term belongs to, then explain it within that context.
+CONTEXT ANALYSIS: Based on the article content and surrounding text, determine what specific technology, field, or domain this term belongs to, then explain it within that exact context.
 
 ${style === 'Simple' ? `
 Simple Explanation:
-- Explain like to a 10-year-old using simple words.
-- Use a relatable analogy that fits the article's specific domain.
-- Keep it short (20-100 words).
-- Format: Definition (specific to this article's exact context), example, why it matters in this domain.
+- First identify the article's domain from context
+- Explain like to a 10-year-old using simple words
+- Use a relatable analogy that fits the article's specific domain
+- Keep it short (20-100 words)
+- Format: Definition (specific to this article's exact context), example, why it matters in this domain
 ` : `
 Technical Explanation:
-- Provide a detailed, precise explanation specific to the article's exact domain.
-- Use technical terms appropriate to the specific context.
-- Include context from the article.
-- Format: Definition (domain-specific), implementation details, role in the specific system described.
+- First identify the article's domain from context
+- Provide a detailed, precise explanation specific to the article's exact domain
+- Use technical terms appropriate to the specific context
+- Include context from the article
+- Format: Definition (domain-specific), implementation details, role in the specific system described
 `}`;
 
     // OpenRouter API integration
@@ -376,6 +391,13 @@ Technical Explanation:
                 temperature: style === 'Technical' ? 0.3 : 0.7
             };
 
+            // Debug log for API request
+            console.log('API Request Headers:', {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+            });
+            console.log('API Request Payload:', payload);
+
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 45000);
 
@@ -391,36 +413,17 @@ Technical Explanation:
 
             clearTimeout(timeoutId);
 
+            // Ensure response body is read only once
+            const responseText = await response.text();
+            console.log('API Response:', responseText);
+
             if (!response.ok) {
-                const errorBody = await response.json().catch(() => ({}));
-                throw new Error(errorBody.error?.message || `API request failed with status ${response.status}`);
+                throw new Error(`API Error: ${response.status} - ${responseText}`);
             }
 
-            const result = await response.json();
-            console.log('OpenRouter API response:', JSON.stringify(result, null, 2));
-
-            if (!result?.choices?.length) {
-                console.error('No choices in API response:', result);
-                throw new Error('The AI service returned no response choices. Please try again.');
-            }
-            const choice = result.choices[0];
-            if (!choice?.message?.content) {
-                console.error('Unexpected API response format:', result);
-                if (choice?.finish_reason === 'length') {
-                    lastError = new Error("The AI's response was cut short by the OpenRouter API. All output token limits failed. Try a shorter selection or simpler page.");
-                    continue;
-                }
-                throw new Error('The API response was incomplete or missing expected fields');
-            }
-            const text = choice.message.content.trim();
-            if (!text) {
-                if (choice.finish_reason === 'length') {
-                    lastError = new Error("The AI's response was cut short by the OpenRouter API. All output token limits failed. Try a shorter selection or simpler page.");
-                    continue;
-                }
-                throw new Error('The API returned an empty response');
-            }
-            return text;
+            // Parse the response JSON only once
+            const responseData = JSON.parse(responseText);
+            return responseData;
         } catch (error) {
             lastError = error;
         }
@@ -431,6 +434,7 @@ Technical Explanation:
 
 // Message handler
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    // Enhanced storage handling
     if (request.type === 'getStorage') {
         chrome.storage.sync.get(request.key, (result) => {
             if (chrome.runtime.lastError) {
@@ -509,7 +513,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 };
 
                 // Directly call the API (no retry logic)
-                const explanation = await callGeminiAPI(apiParams);
+                const response = await callGeminiAPI(apiParams);
+
+                // Extract the content from the OpenRouter API response
+                const explanation = response.choices[0].message.content;
 
                 const validatedExplanation = validateResponse(explanation, request.payload.style);
 

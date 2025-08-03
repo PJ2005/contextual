@@ -64,24 +64,27 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // Enhanced error handling and validation
     async function fetchExplanation() {
         if (!currentSelectedText) return;
 
         showLoader();
 
         try {
-            // Validate API key before making the request
+            // Ensure API key is passed correctly
             const { apiKey } = await new Promise((resolve) => {
                 chrome.runtime.sendMessage({ type: 'getStorage', key: 'apiKey' }, (response) => {
                     resolve({ apiKey: response?.value });
                 });
             });
 
+            // Debug log for API key retrieval
+            console.log('fetchExplanation: Retrieved apiKey:', apiKey);
+
             if (!apiKey || !apiKey.startsWith('sk-or-')) {
                 throw new Error('No valid API key set. Please configure a valid OpenRouter API key in the extension settings.');
             }
 
-            // Add timeout handling
             const response = await Promise.race([
                 chrome.runtime.sendMessage({
                     type: 'getExplanation',
@@ -95,7 +98,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 )
             ]);
 
-            // Enhanced response validation
             if (!response) {
                 throw new Error('No response received from background script');
             }
@@ -118,14 +120,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 errorMessage += 'Extension context was lost. Please reopen the popup.';
             } else if (error.message.includes('API key') || error.message.includes('Invalid or missing API key')) {
                 errorMessage += 'Please verify your API key in the extension settings.';
-            } else if (error.message.includes('Token limit exceeded')) {
-                errorMessage += 'The selected text or page content is too long. Try selecting a shorter phrase or reloading the page.';
-            } else if (error.message.includes('No readable content')) {
-                errorMessage += 'This page doesn\'t contain readable text content. Please try a different page.';
-            } else if (error.message.includes('Invalid selected text')) {
-                errorMessage += 'Please make a new text selection and try again.';
-            } else if (error.message.includes('Invalid page content')) {
-                errorMessage += 'Please refresh the page and try again.';
             } else {
                 errorMessage += error.message || 'Please try again or check your API key.';
             }

@@ -47,16 +47,16 @@ saveBtn.addEventListener('click', () => {
         if (response && response.success) {
             chrome.runtime.sendMessage({ type: 'setStorage', key: 'modelName', value: modelName }, (modelResponse) => {
                 if (modelResponse && modelResponse.success) {
-                    showStatus('✓ Configuration saved successfully!', 'success');
+                    showStatus('Configuration saved successfully!', 'success');
                     setTimeout(() => {
                         window.close();
                     }, 1500);
                 } else {
-                    showStatus('Failed to save model name.', 'error');
+                    showStatus('Failed to save model name. Please try again.', 'error');
                 }
             });
         } else {
-            showStatus('Failed to save API key.', 'error');
+            showStatus('Failed to save API key. Please try again.', 'error');
         }
     });
 });

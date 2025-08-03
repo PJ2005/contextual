@@ -8,19 +8,16 @@
 </head>
 
 <body>
-    <div class="container">
-        <div class="header">
-            <div class="icon">⚡</div>
-            <h1>Contextual AI</h1>
-            <p class="tagline">Smart explanations, anywhere</p>
+    <div id="popup-container">
+        <div id="popup-header">
+            <h1 id="header-title">Settings</h1>
         </div>
 
         <div class="form-section">
             <div class="field">
                 <label for="api-key">OpenRouter API Key</label>
                 <div class="input-wrapper">
-                    <input type="password" id="api-key" placeholder="sk-or-v1-..." autocomplete="off">
-                    <div class="input-icon">🔐</div>
+                    <input type="password" id="api-key" placeholder="Enter your API key" autocomplete="off">
                 </div>
                 <div class="field-help">
                     Get your key from <a href="https://openrouter.ai/keys" target="_blank">openrouter.ai/keys</a>
@@ -30,18 +27,16 @@
             <div class="field">
                 <label for="model-name">AI Model</label>
                 <div class="input-wrapper">
-                    <input type="text" id="model-name" placeholder="deepseek/deepseek-chat-v3-0324" autocomplete="off">
-                    <div class="input-icon">🤖</div>
+                    <input type="text" id="model-name" placeholder="e.g., deepseek/deepseek-chat-v3-0324"
+                        autocomplete="off">
                 </div>
                 <div class="field-help">
-                    Browse models at <a href="https://openrouter.ai/models" target="_blank">openrouter.ai/models</a>
+                    Default is <code>deepseek/deepseek-chat-v3-0324</code>. Browse models <a
+                        href="https://openrouter.ai/models" target="_blank">here</a>.
                 </div>
             </div>
 
-            <button id="save-btn" class="save-button">
-                <span class="button-text">Save Configuration</span>
-                <div class="button-icon">✓</div>
-            </button>
+            <button id="save-btn" class="save-button">Save</button>
 
             <div id="status-msg" class="status-message"></div>
         </div>
