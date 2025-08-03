@@ -198,6 +198,21 @@ cd contextual
 # Go to chrome://extensions/ → Developer mode → Load unpacked
 ```
 
+### Sharing the Extension
+
+#### For End Users
+1. **Direct Download**: Share the [GitHub repository link](https://github.com/PJ2005/contextual)
+2. **ZIP Distribution**: Create a ZIP file and share directly
+3. **Chrome Web Store**: *Coming soon - under review*
+
+#### Installation Instructions for Recipients
+1. Download/clone this repository
+2. Open Chrome and go to `chrome://extensions/`
+3. Enable "Developer mode" (toggle in top-right)
+4. Click "Load unpacked" and select the extension folder
+5. Get your OpenRouter API key from [OpenRouter.ai](https://openrouter.ai/)
+6. Click the extension icon and configure your API key
+
 ---
 
 ## 📄 License
