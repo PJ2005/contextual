@@ -25,13 +25,13 @@
 
 | Feature | Description |
 |---------|-------------|
-| 🎯 **Context-Aware** | Analyzes the entire article to provide domain-specific explanations |
-| ⚡ **Instant Results** | Get explanations in under 3 seconds |
-| 📚 **Dual Modes** | Choose between **Simple** (beginner-friendly) or **Technical** (detailed) explanations |
-| 🔒 **Privacy First** | Your API key is stored locally and never shared |
-| 🤖 **AI-Powered** | Leverages OpenRouter's advanced language models |
-| 📱 **Non-Intrusive** | Clean sidebar interface that doesn't disrupt your reading |
-| 💾 **Smart Caching** | Avoids redundant API calls for better performance |
+| **Context-Aware** | Analyzes the entire article to provide domain-specific explanations |
+| **Instant Results** | Get explanations in under 3 seconds |
+| **Dual Modes** | Choose between **Simple** (beginner-friendly) or **Technical** (detailed) explanations |
+| **Privacy First** | Your API key is stored locally and never shared |
+| **AI-Powered** | Leverages OpenRouter's advanced language models |
+| **Non-Intrusive** | Clean po-up interface that doesn't disrupt your reading |
+| **Smart Caching** | Avoids redundant API calls for better performance |
 
 ---
 
