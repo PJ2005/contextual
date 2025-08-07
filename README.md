@@ -8,11 +8,11 @@
 
 ---
 
-## ✨ What is Contextual?
+## What is Contextual?
 
 **Contextual** is a Chrome extension that brings intelligent text explanations directly to your browser. Whether you're reading technical documentation, research papers, or blog posts, simply highlight any word or phrase to get a context-aware explanation powered by state-of-the-art AI models.
 
-### 🎯 The Problem It Solves
+### The Problem It Solves
 
 - **No more tab switching** - Stop interrupting your reading flow to search for definitions
 - **Context matters** - Get explanations that understand the specific domain and context of what you're reading
@@ -21,7 +21,7 @@
 
 ---
 
-## 🌟 Key Features
+## Key Features
 
 | Feature | Description |
 |---------|-------------|
@@ -35,7 +35,7 @@
 
 ---
 
-## 🚀 Quick Start Guide
+## Quick Start Guide
 
 ### Step 1: Installation
 
@@ -57,7 +57,7 @@
 
 3. **Pin the extension** (recommended)
    - Click the puzzle piece icon in Chrome toolbar
-   - Click the pin 📌 next to "Contextual"
+   - Click the pin next to "Contextual"
 
 ### Step 2: Configuration
 
@@ -76,7 +76,7 @@
    - Free tier models available for testing
 4. **Click "Save"** - You'll see a success message
 
-> 💡 **Pro Tip**: Your configuration is saved permanently and syncs across Chrome devices!
+> **Pro Tip**: Your configuration is saved permanently and syncs across Chrome devices!
 
 ### Step 3: Start Using
 
@@ -84,13 +84,13 @@
 2. **Highlight any text** you want explained
 3. **Click the circular icon** that appears next to your selection
 4. **Choose explanation style**:
-   - 🟢 **Simple**: Easy-to-understand, beginner-friendly explanations
-   - 🔵 **Technical**: Detailed, domain-specific technical explanations
+   - **Simple**: Easy-to-understand, beginner-friendly explanations
+   - **Technical**: Detailed, domain-specific technical explanations
 5. **Read the explanation** in the sidebar that opens
 
 ---
 
-## 📖 Usage Examples
+## Usage Examples
 
 ### Example 1: Technical Documentation
 Reading about gRPC and confused about "client stub"?
@@ -109,7 +109,7 @@ Don't understand "blockchain consensus" in a crypto article?
 
 ---
 
-## ⚙️ How It Works
+## How It Works
 
 ```mermaid
 graph LR
@@ -127,7 +127,7 @@ graph LR
 
 ---
 
-## 🛠️ Technical Architecture
+## Technical Architecture
 
 | Component | Purpose |
 |-----------|---------|
@@ -138,33 +138,24 @@ graph LR
 
 ---
 
-## 🔧 Configuration Options
 
-### Supported Models
-
-| Model | Provider | Speed | Quality | Cost |
-|-------|----------|-------|---------|------|
-| `deepseek/deepseek-chat-v3-0324` | DeepSeek | ⚡⚡⚡ | ⭐⭐⭐⭐ | 💰 |
-| `openai/gpt-4o-mini` | OpenAI | ⚡⚡ | ⭐⭐⭐⭐⭐ | 💰💰 |
-| `anthropic/claude-3-haiku` | Anthropic | ⚡⚡⚡ | ⭐⭐⭐⭐ | 💰💰 |
-
-### Explanation Styles
+## Explanation Styles
 
 - **Simple Mode**: 20-100 words, analogies, beginner-friendly language
 - **Technical Mode**: Detailed definitions, implementation details, technical context
 
 ---
 
-## 🔒 Privacy & Security
+## Privacy & Security
 
-- ✅ **Local Storage**: API keys stored locally in Chrome, never transmitted
-- ✅ **No Tracking**: Extension doesn't track your browsing or selections
-- ✅ **Secure Communication**: Direct HTTPS connection to OpenRouter
-- ✅ **Open Source**: Full code available for audit on GitHub
+- **Local Storage**: API keys stored locally in Chrome, never transmitted
+- **No Tracking**: Extension doesn't track your browsing
+- **Secure Communication**: Direct HTTPS connection to OpenRouter
+- **Open Source**: Full code available for audit on GitHub
 
 ---
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### Common Issues
 
@@ -183,7 +174,7 @@ graph LR
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 We welcome contributions! Please check our [Contributing Guidelines](CONTRIBUTING.md) for details.
 
@@ -215,13 +206,13 @@ cd contextual
 
 ---
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - **[OpenRouter](https://openrouter.ai/)** for providing access to state-of-the-art language models
 - **Chrome Extensions API** for enabling seamless browser integration
@@ -233,6 +224,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Made with ❤️ for developers, researchers, and curious minds**
 
-[⭐ Star on GitHub](https://github.com/PJ2005/contextual) • [🐛 Report Bug](https://github.com/PJ2005/contextual/issues) • [💡 Request Feature](https://github.com/PJ2005/contextual/issues)
+[Star on GitHub](https://github.com/PJ2005/contextual) • [Report Bug](https://github.com/PJ2005/contextual/issues) • [Request Feature](https://github.com/PJ2005/contextual/issues)
 
 </div>
